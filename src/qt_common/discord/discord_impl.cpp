@@ -17,6 +17,8 @@
 #include "common/common_types.h"
 #include "common/string_util.h"
 #include "core/core.h"
+#include "core/file_sys/control_metadata.h"
+#include "core/file_sys/patch_manager.h"
 #include "core/loader/loader.h"
 
 #include "discord_impl.h"
@@ -29,9 +31,9 @@ namespace DiscordRPC {
 
 DiscordImpl::DiscordImpl(Core::System& system_) : system{system_} {
     DiscordEventHandlers handlers{};
-    // The number is the client ID for Eden, it's used for images and the
+    // The number is the client ID for Eglantine, it's used for images and the
     // application name
-    Discord_Initialize("1397286652128264252", &handlers, 1, nullptr);
+    Discord_Initialize("1566479696022081606", &handlers, 1, nullptr);
 }
 
 DiscordImpl::~DiscordImpl() {
@@ -71,8 +73,7 @@ std::string DiscordImpl::GetGameString(const std::string& title) {
 
 static constexpr char DEFAULT_DISCORD_TEXT[] = "Eglantine is an emulator for the Nintendo Switch";
 static constexpr char DEFAULT_DISCORD_IMAGE[] =
-    "https://git.eden-emu.dev/eden-emu/eden/raw/branch/master/dist/qt_themes/default/icons/256x256/"
-    "eden.png";
+    "https://raw.githubusercontent.com/zortos293/Eglantine/refs/heads/nx2/dist/Eglantine.png";
 
 void DiscordImpl::UpdateGameStatus(std::string_view game_url, bool has_boxart) {
     const std::string url = std::string{has_boxart ? game_url : DEFAULT_DISCORD_IMAGE};
@@ -87,7 +88,9 @@ void DiscordImpl::UpdateGameStatus(std::string_view game_url, bool has_boxart) {
     presence.smallImageText = DEFAULT_DISCORD_TEXT;
     presence.state = game_title.c_str();
     presence.status_display_type = DiscordStatusDisplayType_State;
-    presence.details = "Currently in game";
+    const std::string details =
+        game_version.empty() ? "Currently in game" : fmt::format("Version {}", game_version);
+    presence.details = details.c_str();
     presence.startTimestamp = start_time;
     Discord_UpdatePresence(&presence);
 }
@@ -95,6 +98,13 @@ void DiscordImpl::UpdateGameStatus(std::string_view game_url, bool has_boxart) {
 void DiscordImpl::Update() {
     if (system.IsPoweredOn()) {
         system.GetAppLoader().ReadTitle(game_title);
+
+        // Read the version from the patched metadata so installed updates are reflected
+        const FileSys::PatchManager pm(system.GetApplicationProcessProgramID(),
+                                       system.GetFileSystemController(),
+                                       system.GetContentProvider());
+        const auto metadata = pm.GetControlMetadata();
+        game_version = metadata.first != nullptr ? metadata.first->GetVersionString() : "";
 
         // Used to format Icon URL for yuzu website game compatibility page
         std::string icon_name = GetGameString(game_title);
@@ -134,3 +144,4 @@ void DiscordImpl::Update() {
     Discord_UpdatePresence(&presence);
 }
 } // namespace DiscordRPC
+
